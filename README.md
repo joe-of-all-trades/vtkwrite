@@ -7,9 +7,9 @@ Example usage: type in the following codes
 
 Example 1 : export 3D vector and scalar field 
 
-load wind %load built-in vector field dataset 
-[cu,cv,cw] = curl(x,y,z,u,v,w); %calculate vorticity of the vector field 
-div = divergence(x,y,z,u,v,w); %calculate divergence of the vector field 
+load wind 
+[cu,cv,cw] = curl(x,y,z,u,v,w); 
+div = divergence(x,y,z,u,v,w); 
 vtkwrite('wind.vtk', 'structured_grid',x,y,z, 'vectors','vector_field',u,v,w, 'vectors','vorticity',cu,cv,cw, 'scalars','divergence',div); 
 
 Usage is very similar for unstructured 3D data. Just change 'structured_grid' to 'unstructured_grid'. For example : 
@@ -19,7 +19,9 @@ Example 2 : export 3D line
 
 x = 1:100; y = sin(x); z = sqrt(x); 
 vtkwrite('line.vtk','polydata','lines',x,y,z); 
+
 optionally, user can specify precision of data output(default is 3). for example: 
+
 vtkwrite('line.vtk','polydata','lines',x,y,z,'Precision',5); 
 
 Example 3 : VERY COOL FEATURE! For advanced user, the function has an option to call ParaView and load data into it automatically. For this to work, you'll have to add the folder containing paraview.exe to the system PATH variable. So when you issue paraview.exe command, the system knows where to look. This can be done easily by using Path Editor. The path of the folder, typically, will be C:\Program Files (x86)\ParaView 4.2.0-RC1\bin. Then try this: 
