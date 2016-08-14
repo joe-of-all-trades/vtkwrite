@@ -6,10 +6,12 @@ Paraview is a powerful open-source software for visualization of large 3D datase
 Example usage: type in the following codes 
 
 Example 1 : export 3D vector and scalar field 
+
 load wind %load built-in vector field dataset 
 [cu,cv,cw] = curl(x,y,z,u,v,w); %calculate vorticity of the vector field 
 div = divergence(x,y,z,u,v,w); %calculate divergence of the vector field 
 vtkwrite('wind.vtk', 'structured_grid',x,y,z, 'vectors','vector_field',u,v,w, 'vectors','vorticity',cu,cv,cw, 'scalars','divergence',div); 
+
 Usage is very similar for unstructured 3D data. Just change 'structured_grid' to 'unstructured_grid'. For example : 
 vtkwrite('random_vector.vtk', 'unstructured_grid',x,y,z, 'vectors','random_vector',u,v,w,) 
 
