@@ -15,20 +15,30 @@ function vtkwrite( filename,dataType,varargin )
 %  x,y,z,r must all be the same size and contain the corresponding position
 %  and scalar values. 
 %
-%  vtkwrite(filename,'structured_grid',x,y,z,'vectors',title1,u,v,w,'scalars',
+%  vtkwrite(filename,'structured_grid',x,y,z,'vectors',title,u,v,w,'scalars',
 %  title2,r) writes a 3D structured grid that contains both vector and scalar values.
 %  x,y,z,u,v,w,r must all be the same size and contain the corresponding
 %  positon, vector and scalar values.
 %
-%  vtkwrite(filename,'unstructured_grid',x,y,z,'vectors',title1,u,v,w,'scalars',
+%  vtkwrite(filename, 'structured_points', title, m) saves matrix m (could
+%  be 1D, 2D or 3D array) into vtk as structured points.
+%
+%  vtkwrite(filename, 'structured_points', title, m, 'spacing', sx, sy, sz)
+%  allows user to specify spacing. (default: 1, 1, 1). This is the aspect
+%  ratio of a single voxel. 
+%
+%  vtkwrite(filename, 'structured_points', title, m, 'origin', ox, oy, oz)
+%  allows user to speicify origin of dataset. (default: 0, 0, 0).
+%
+%  vtkwrite(filename,'unstructured_grid',x,y,z,'vectors',title,u,v,w,'scalars',
 %  title2,r) writes a 3D unstructured grid that contains both vector and scalar values.
 %  x,y,z,u,v,w,r must all be the same size and contain the corresponding
 %  positon, vector and scalar values.
 %  
-%  vtkwrite(filename,'polydata','lines',x,y,z) exports a 3D line where
-%  x,y,z are coordinates of the points that make the line. x,y,z are
+%  vtkwrite(filename, 'polydata', 'lines', x, y, z) exports a 3D line where
+%  x,y,z are coordinates of the points that make the line. x, y, z are
 %  vectors containing the coordinates of points of the line, where point(n)
-%  is specified by x(n),y(n) and z(n).
+%  is specified by x(n), y(n) and z(n).
 %
 %  vtkwrite(filename,'polydata','lines',x,y,z,'Precision',n) allows you to
 %  specify precision of the exported number up to n digits after decimal
@@ -47,8 +57,8 @@ function vtkwrite( filename,dataType,varargin )
 %  filename ''matlab_export.vtk' and automatically loads data into
 %  ParaView. 
 %  
-%  Version 2.2.1
-%  Chaoyuan Yeh, 2015
+%  Version 2.3
+%  Copyright, Chaoyuan Yeh, 2016
 %  Codes are modified from William Thielicke and David Gingras's submission.    
 
 if strcmpi(filename,'execute'), filename = 'matlab_export.vtk'; end
@@ -59,6 +69,40 @@ fprintf(fid, '# vtk DataFile Version 2.0\n');
 % 2. Title
 fprintf(fid, 'VTK from Matlab\n');
 switch upper(dataType)
+    case 'STRUCTURED_POINTS'
+        title = varargin{1};
+        m = varargin{2};
+        if any(strcmpi(varargin, 'spacing'))
+            sx = varargin{find(strcmpi(varargin, 'spacing'))+1};
+            sy = varargin{find(strcmpi(varargin, 'spacing'))+2};
+            sz = varargin{find(strcmpi(varargin, 'spacing'))+3};
+        else
+            sx = 1;
+            sy = 1;
+            sz = 1;
+        end
+        if any(strcmpi(varargin, 'origin'))
+            ox = varargin{find(strcmpi(varargin, 'origin'))+1};
+            oy = varargin{find(strcmpi(varargin, 'origin'))+2};
+            oz = varargin{find(strcmpi(varargin, 'origin'))+3};
+        else
+            ox = 0;
+            oy = 0;
+            oz = 0;
+        end
+        [nx, ny, nz] = size(m);
+        fprintf(fid, 'BINARY\n');
+        fprintf(fid, 'DATASET STRUCTURED_POINTS\n');
+        fprintf(fid, 'DIMENSIONS %d %d %d\n', nx, ny, nz);
+        fprintf(fid, ['SPACING ', num2str(sx), ' ', num2str(sy), ' ',...
+            num2str(sz), '\n']);
+        fprintf(fid, ['ORIGIN ', num2str(ox), ' ', num2str(oy), ' ',...
+            num2str(oz), '\n']); 
+        fprintf(fid, 'POINT_DATA %d\n', nx*ny*nz);
+        fprintf(fid, ['SCALARS ', title, ' float 1\n']);
+        fprintf(fid,'LOOKUP_TABLE default\n');
+        fwrite(fid, m(:)', 'float', 'b');
+        
     case {'STRUCTURED_GRID','UNSTRUCTURED_GRID'}
         % 3. The format data proper is saved in (ASCII or Binary). Use
         % fprintf to write data in the case of ASCII and fwrite for binary.
@@ -78,12 +122,12 @@ switch upper(dataType)
         % Then the geomettry part describes geometry and topology of the dataset.
         if strcmpi(dataType,'STRUCTURED_GRID')
             fprintf(fid, 'DATASET STRUCTURED_GRID\n');
-            fprintf(fid, ['DIMENSIONS ' num2str(size(x,2)) ' ' num2str(size(x,1)) ' ' num2str(size(x,3)) '\n']);
+            fprintf(fid, 'DIMENSIONS %d %d %d\n', size(x,1), size(x,2), size(x,3));
         else
             fprintf(fid, 'DATASET UNSTRUCTURED_GRID\n');
         end
         fprintf(fid, ['POINTS ' num2str(n_elements) ' float\n']);
-        fwrite(fid, [x(:)';y(:)';z(:)'],'float','b');
+        fwrite(fid, [x(:)';y(:)';z(:)'], 'float', 'b');
         % 5.This final part describe the dataset attributes and begins with the
         % keywords 'POINT_DATA' or 'CELL_DATA', followed by an integer number
         % specifying the number of points of cells. Other keyword/data combination
@@ -140,7 +184,7 @@ switch upper(dataType)
             precision = num2str(uint8(varargin{find(strcmpi(varargin,'PRECISION'))+1}));
             if str2double(precision) < 0, error('Invalid precision spec.');end
         end
-        spec = [repmat(['%0.',precision,'f '],1,9),'\n'];
+        spec = [repmat(['%0.', precision, 'f '], 1, 9), '\n'];
         fprintf(fid,spec, [x(1:3:end-2) y(1:3:end-2) z(1:3:end-2) ...
              x(2:3:end-1) y(2:3:end-1) z(2:3:end-1) ...
              x(3:3:end) y(3:3:end) z(3:3:end)]');
