@@ -74,7 +74,7 @@ binaryflag = any(strcmpi(varargin, 'BINARY'));
 if any(strcmpi(varargin, 'PRECISION'))
     precision = num2str(varargin{find(strcmpi(varargin, 'PRECISION'))+1});
 else
-    precision = '2';
+    precision = '3';
 end
 
 switch upper(dataType)
