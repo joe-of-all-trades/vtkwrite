@@ -151,49 +151,6 @@ switch upper(dataType)
         else
             fwrite(fid, output, 'float', 'b');
         end
-        % 5.This final part describe the dataset attributes and begins with the
-        % keywords 'POINT_DATA' or 'CELL_DATA', followed by an integer number
-        % specifying the number of points of cells. Other keyword/data combination
-        % then define the actual dataset attribute values.
-        fprintf(fid, ['\nPOINT_DATA ' num2str(n_elements)]);
-        % Parse remaining argument.
-        vidx = find(strcmpi(varargin,'VECTORS'));
-        sidx = find(strcmpi(varargin,'SCALARS'));
-        if vidx~=0
-            for ii = 1:length(vidx)
-                title = varargin{vidx(ii)+1};
-                % Data enteries begin with a keyword specifying data type
-                % and numeric format.
-                fprintf(fid, ['\nVECTORS ', title,' float\n']);
-                output = [varargin{ vidx(ii) + 2 }(:)';...
-                          varargin{ vidx(ii) + 3 }(:)';...
-                          varargin{ vidx(ii) + 4 }(:)'];
-
-                if ~binaryflag
-                    spec = ['%0.', precision, 'f '];
-                    fprintf(fid, spec, output);
-                else
-                    fwrite(fid, output, 'float', 'b');
-                end
-%                 fwrite(fid, [reshape(varargin{vidx(ii)+2},1,n_elements);...
-%                 reshape(varargin{vidx(ii)+3},1,n_elements);...
-%                 reshape(varargin{vidx(ii)+4},1,n_elements)],'float','b');
-            end
-        end
-        if sidx~=0
-            for ii = 1:length(sidx)
-                title = varargin{sidx(ii)+1};
-                fprintf(fid, ['\nSCALARS ', title,' float\n']);
-                fprintf(fid, 'LOOKUP_TABLE default\n');
-                if ~binaryflag
-                    spec = ['%0.', precision, 'f '];
-                    fprintf(fid, spec, varargin{ sidx(ii) + 2});
-                else
-                    fwrite(fid, varargin{ sidx(ii) + 2}, 'float', 'b');
-                end
-%                 fwrite(fid, reshape(varargin{sidx(ii)+2},1,n_elements),'float','b');
-            end
-        end
         
     case 'POLYDATA'
 
@@ -202,7 +159,6 @@ switch upper(dataType)
         x = varargin{2}(:);
         y = varargin{3}(:);
         z = varargin{4}(:);
-        if numel(varargin)<4, error('Not enough input arguments'); end
         if sum(size(x)==size(y) & size(y)==size(z))~= length(size(x))
             error('Input dimesions do not match')
         end
@@ -253,6 +209,53 @@ switch upper(dataType)
                 fprintf(fid,'4 %d %d %d %d\n',(varargin{5}-1)');
         end     
 end
+
+if ~strcmpi(dataType,'STRUCTURED_POINTS')
+    % 5.This final part describe the dataset attributes and begins with the
+    % keywords 'POINT_DATA' or 'CELL_DATA', followed by an integer number
+    % specifying the number of points of cells. Other keyword/data combination
+    % then define the actual dataset attribute values.
+    fprintf(fid, ['\nPOINT_DATA ' num2str(n_elements)]);
+    % Parse remaining argument.
+    vidx = find(strcmpi(varargin,'VECTORS'));
+    sidx = find(strcmpi(varargin,'SCALARS'));
+    if vidx~=0
+        for ii = 1:length(vidx)
+            title = varargin{vidx(ii)+1};
+            % Data enteries begin with a keyword specifying data type
+            % and numeric format.
+            fprintf(fid, ['\nVECTORS ', title,' float\n']);
+            output = [varargin{ vidx(ii) + 2 }(:)';...
+                      varargin{ vidx(ii) + 3 }(:)';...
+                      varargin{ vidx(ii) + 4 }(:)'];
+
+            if ~binaryflag || strcmpi(dataType,'POLYDATA')
+                spec = [repmat(['%0.', precision, 'f '], 1, 9), '\n'];
+                fprintf(fid, spec, output);
+            else
+                fwrite(fid, output, 'float', 'b');
+            end
+%                 fwrite(fid, [reshape(varargin{vidx(ii)+2},1,n_elements);...
+%                 reshape(varargin{vidx(ii)+3},1,n_elements);...
+%                 reshape(varargin{vidx(ii)+4},1,n_elements)],'float','b');
+        end
+    end
+    if sidx~=0
+        for ii = 1:length(sidx)
+            title = varargin{sidx(ii)+1};
+            fprintf(fid, ['\nSCALARS ', title,' float\n']);
+            fprintf(fid, 'LOOKUP_TABLE default\n');
+            if ~binaryflag || strcmpi(dataType,'POLYDATA')
+                spec = [repmat(['%0.', precision, 'f '], 1, 9), '\n'];
+                fprintf(fid, spec, varargin{ sidx(ii) + 2});
+            else
+                fwrite(fid, varargin{ sidx(ii) + 2}, 'float', 'b');
+            end
+    %                 fwrite(fid, reshape(varargin{sidx(ii)+2},1,n_elements),'float','b');
+        end
+    end
+end
+
 fclose(fid);
 if strcmpi(filename,'matlab_export.vtk')
     switch computer
