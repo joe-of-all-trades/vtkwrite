@@ -9,13 +9,13 @@ function vtkwrite( filename,dataType,varargin )
 %  corrresponding position and vector component. The string title specifies
 %  the name of the vector field to be saved. 
 %
-%  vtkwrite(filename,'structured_grid',x,y,z,'point_data','scalars',title,r) writes a 3D
+%  vtkwrite(filename,'structured_grid',x,y,z,'scalars',title,r) writes a 3D
 %  scalar data into VTK file whose name is specified by the string
 %  filename. r is the scalar value at the points (x,y,z). The matrices
 %  x,y,z,r must all be the same size and contain the corresponding position
 %  and scalar values. 
 %
-%  vtkwrite(filename,'structured_grid',x,y,z,'point_data','vectors',title,u,v,w,'pointdata','scalars',
+%  vtkwrite(filename,'structured_grid',x,y,z,'vectors',title,u,v,w,'scalars',
 %  title2,r) writes a 3D structured grid that contains both vector and scalar values.
 %  x,y,z,u,v,w,r must all be the same size and contain the corresponding
 %  positon, vector and scalar values.
@@ -30,7 +30,7 @@ function vtkwrite( filename,dataType,varargin )
 %  vtkwrite(filename, 'structured_points', title, m, 'origin', ox, oy, oz)
 %  allows user to speicify origin of dataset. (default: 0, 0, 0).
 %
-%  vtkwrite(filename,'unstructured_grid',x,y,z,'point_data','vectors',title,u,v,w,'pointdata','scalars',
+%  vtkwrite(filename,'unstructured_grid',x,y,z,'vectors',title,u,v,w,'scalars',
 %  title2,r) writes a 3D unstructured grid that contains both vector and scalar values.
 %  x,y,z,u,v,w,r must all be the same size and contain the corresponding
 %  positon, vector and scalar values.
@@ -123,13 +123,17 @@ switch upper(dataType)
     case {'STRUCTURED_GRID','UNSTRUCTURED_GRID'}
         % 3. The format data proper is saved in (ASCII or Binary). Use
         % fprintf to write data in the case of ASCII and fwrite for binary.
-        if numel(varargin)<6, error('Not enough input arguments'); end
+        if numel(varargin)<6
+            fclose(fid);
+            error('Not enough input arguments');
+        end
         setdataformat(fid, binaryflag);
 %         fprintf(fid, 'BINARY\n');
         x = varargin{1};
         y = varargin{2};
         z = varargin{3};
         if sum(size(x)==size(y) & size(y)==size(z))~=length(size(x))
+            fclose(fid);
             error('Input dimesions do not match')
         end
         n_elements = numel(x);
@@ -158,12 +162,16 @@ switch upper(dataType)
     case 'POLYDATA'
 
         fprintf(fid, 'ASCII\n');
-        if numel(varargin)<4, error('Not enough input arguments'); end
+        if numel(varargin)<4
+            fclose(fid);
+            error('Not enough input arguments');
+        end
         x = varargin{2}(:);
         y = varargin{3}(:);
         z = varargin{4}(:);
         if sum(size(x)==size(y) & size(y)==size(z))~= length(size(x))
-            error('Input dimesions do not match')
+            fclose(fid);
+            error('Input dimesions do not match');
         end
         n_elements = numel(x);
         fprintf(fid, 'DATASET POLYDATA\n');
@@ -221,75 +229,56 @@ if ~strcmpi(dataType,'STRUCTURED_POINTS')
     % keywords 'POINT_DATA' or 'CELL_DATA', followed by an integer number
     % specifying the number of points of cells. Other keyword/data combination
     % then define the actual dataset attribute values.
-    
-    % 5a. 'POINT_DATA'
     % Parse remaining argument.
-    pidx = find(strcmpi(varargin,'POINT_DATA'));
-    if pidx~=0
-        fprintf(fid, ['\nPOINT_DATA ' num2str(n_elements)]);
-        for ii = 1:length(pidx)
-            vect_scal = varargin{pidx(ii)+1};
-            title = varargin{pidx(ii)+2};
-            switch upper(vect_scal)
-                case 'VECTORS'
-                    % Data enteries begin with a keyword specifying data type
-                    % and numeric format.
+    vidx = find(strcmpi(varargin,'VECTORS'));
+    sidx = find(strcmpi(varargin,'SCALARS'));
+    n_point_cell = [n_elements,n_cells];
+    for pcidx = [1,2]
+        switch pcidx
+            case 1
+                fprintf(fid, ['\nPOINT_DATA ' num2str(n_elements)]);
+            case 2
+                fprintf(fid, ['\nCELL_DATA ' num2str(n_cells)]);
+        end
+        if vidx~=0
+            for ii = 1:length(vidx)
+                title = varargin{vidx(ii)+1};
+                output = [varargin{ vidx(ii) + 2 }(:)';...
+                          varargin{ vidx(ii) + 3 }(:)';...
+                          varargin{ vidx(ii) + 4 }(:)'];
+                % Data entries begin with a keyword specifying data type
+                % and numeric format.
+                if numel(output)==3*n_point_cell(pcidx)
                     fprintf(fid, ['\nVECTORS ', title,' float\n']);
-                    output = [varargin{ pidx(ii) + 3 }(:)';...
-                              varargin{ pidx(ii) + 4 }(:)';...
-                              varargin{ pidx(ii) + 5 }(:)'];
-
                     if ~binaryflag || strcmpi(dataType,'POLYDATA')
                         spec = [repmat(['%0.', precision, 'f '], 1, 9), '\n'];
                         fprintf(fid, spec, output);
                     else
                         fwrite(fid, output, 'float', 'b');
                     end
-                case 'SCALARS'
-                    fprintf(fid, ['\nSCALARS ', title,' float\n']);
-                    fprintf(fid, 'LOOKUP_TABLE default\n');
-                    if ~binaryflag || strcmpi(dataType,'POLYDATA')
-                        spec = [repmat(['%0.', precision, 'f '], 1, 9), '\n'];
-                        fprintf(fid, spec, varargin{ pidx(ii) + 3});
-                    else
-                        fwrite(fid, varargin{ pidx(ii) + 3}, 'float', 'b');
-                    end
+                elseif pcidx==1 && all(numel(output)~=3*n_point_cell(:))
+                    warning([title,' dimensions do not match']);
+                end
             end
         end
-    end
-    
-    % 5a. 'CELL_DATA'
-    % Parse remaining argument.
-    cidx = find(strcmpi(varargin,'CELL_DATA'));
-    if cidx~=0
-        fprintf(fid, ['\nCELL_DATA ' num2str(n_cells)]);
-        for ii = 1:length(cidx)
-            vect_scal = varargin{cidx(ii)+1};
-            title = varargin{cidx(ii)+2};
-            switch upper(vect_scal)
-                case 'VECTORS'
-                    % Data enteries begin with a keyword specifying data type
-                    % and numeric format.
-                    fprintf(fid, ['\nVECTORS ', title,' float\n']);
-                    output = [varargin{ cidx(ii) + 3 }(:)';...
-                              varargin{ cidx(ii) + 4 }(:)';...
-                              varargin{ cidx(ii) + 5 }(:)'];
-
+        if sidx~=0
+            for ii = 1:length(sidx)
+                title = varargin{sidx(ii)+1};
+                output = varargin{ sidx(ii) + 2};
+                % Data entries begin with a keyword specifying data type
+                % and numeric format.
+                if numel(varargin{ sidx(ii) + 2})==n_point_cell(pcidx)
+                    fprintf(fid, ['\nSCALARS ', title,' float\n']);
+                    fprintf(fid, 'LOOKUP_TABLE default\n');
                     if ~binaryflag || strcmpi(dataType,'POLYDATA')
                         spec = [repmat(['%0.', precision, 'f '], 1, 9), '\n'];
                         fprintf(fid, spec, output);
                     else
                         fwrite(fid, output, 'float', 'b');
                     end
-                case 'SCALARS'
-                    fprintf(fid, ['\nSCALARS ', title,' float\n']);
-                    fprintf(fid, 'LOOKUP_TABLE default\n');
-                    if ~binaryflag || strcmpi(dataType,'POLYDATA')
-                        spec = [repmat(['%0.', precision, 'f '], 1, 9), '\n'];
-                        fprintf(fid, spec, varargin{ cidx(ii) + 3});
-                    else
-                        fwrite(fid, varargin{ cidx(ii) + 3}, 'float', 'b');
-                    end
+                elseif pcidx==1 && all(numel(output)~=n_point_cell(:))
+                    warning(['''',title,''' dimensions do not match']);
+                end
             end
         end
     end
