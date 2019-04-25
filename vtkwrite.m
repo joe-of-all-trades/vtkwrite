@@ -60,6 +60,8 @@ function vtkwrite( filename,dataType,varargin )
 %  Version 2.3
 %  Copyright, Chaoyuan Yeh, 2016
 %  Codes are modified from William Thielicke and David Gingras's submission.    
+%  
+%  Modified by Alessandro Arduino, 2019.
 
 if strcmpi(filename,'execute'), filename = 'matlab_export.vtk'; end
 fid = fopen(filename, 'w'); 
@@ -72,9 +74,9 @@ fprintf(fid, 'VTK from Matlab\n');
 
 binaryflag = any(strcmpi(varargin, 'BINARY'));
 if any(strcmpi(varargin, 'PRECISION'))
-    precision = num2str(varargin{find(strcmpi(vin, 'PRECISION'))+1});
+    precision = num2str(varargin{find(strcmpi(varargin, 'PRECISION'))+1});
 else
-    precision = '2';
+    precision = '3';
 end
 
 switch upper(dataType)
@@ -121,16 +123,21 @@ switch upper(dataType)
     case {'STRUCTURED_GRID','UNSTRUCTURED_GRID'}
         % 3. The format data proper is saved in (ASCII or Binary). Use
         % fprintf to write data in the case of ASCII and fwrite for binary.
-        if numel(varargin)<6, error('Not enough input arguments'); end
+        if numel(varargin)<6
+            fclose(fid);
+            error('Not enough input arguments');
+        end
         setdataformat(fid, binaryflag);
 %         fprintf(fid, 'BINARY\n');
         x = varargin{1};
         y = varargin{2};
         z = varargin{3};
         if sum(size(x)==size(y) & size(y)==size(z))~=length(size(x))
+            fclose(fid);
             error('Input dimesions do not match')
         end
         n_elements = numel(x);
+        n_cells = prod(size(x)-1);
         % 4. Type of Dataset ( can be STRUCTURED_POINTS, STRUCTURED_GRID,
         % UNSTRUCTURED_GRID, POLYDATA, RECTILINEAR_GRID or FIELD )
         % This part, dataset structure, begins with a line containing the
@@ -146,65 +153,25 @@ switch upper(dataType)
         output = [x(:)'; y(:)'; z(:)'];
         
         if ~binaryflag
-            spec = ['%0.', precision, 'f '];
+            spec = [repmat(['%0.', precision, 'f '],1,9),'\n'];
             fprintf(fid, spec, output);
         else
             fwrite(fid, output, 'float', 'b');
-        end
-        % 5.This final part describe the dataset attributes and begins with the
-        % keywords 'POINT_DATA' or 'CELL_DATA', followed by an integer number
-        % specifying the number of points of cells. Other keyword/data combination
-        % then define the actual dataset attribute values.
-        fprintf(fid, ['\nPOINT_DATA ' num2str(n_elements)]);
-        % Parse remaining argument.
-        vidx = find(strcmpi(varargin,'VECTORS'));
-        sidx = find(strcmpi(varargin,'SCALARS'));
-        if vidx~=0
-            for ii = 1:length(vidx)
-                title = varargin{vidx(ii)+1};
-                % Data enteries begin with a keyword specifying data type
-                % and numeric format.
-                fprintf(fid, ['\nVECTORS ', title,' float\n']);
-                output = [varargin{ vidx(ii) + 2 }(:)';...
-                          varargin{ vidx(ii) + 3 }(:)';...
-                          varargin{ vidx(ii) + 4 }(:)'];
-
-                if ~binaryflag
-                    spec = ['%0.', precision, 'f '];
-                    fprintf(fid, spec, output);
-                else
-                    fwrite(fid, output, 'float', 'b');
-                end
-%                 fwrite(fid, [reshape(varargin{vidx(ii)+2},1,n_elements);...
-%                 reshape(varargin{vidx(ii)+3},1,n_elements);...
-%                 reshape(varargin{vidx(ii)+4},1,n_elements)],'float','b');
-            end
-        end
-        if sidx~=0
-            for ii = 1:length(sidx)
-                title = varargin{sidx(ii)+1};
-                fprintf(fid, ['\nSCALARS ', title,' float\n']);
-                fprintf(fid, 'LOOKUP_TABLE default\n');
-                if ~binaryflag
-                    spec = ['%0.', precision, 'f '];
-                    fprintf(fid, spec, varargin{ sidx(ii) + 2});
-                else
-                    fwrite(fid, varargin{ sidx(ii) + 2}, 'float', 'b');
-                end
-%                 fwrite(fid, reshape(varargin{sidx(ii)+2},1,n_elements),'float','b');
-            end
         end
         
     case 'POLYDATA'
 
         fprintf(fid, 'ASCII\n');
-        if numel(varargin)<4, error('Not enough input arguments'); end
+        if numel(varargin)<4
+            fclose(fid);
+            error('Not enough input arguments');
+        end
         x = varargin{2}(:);
         y = varargin{3}(:);
         z = varargin{4}(:);
-        if numel(varargin)<4, error('Not enough input arguments'); end
         if sum(size(x)==size(y) & size(y)==size(z))~= length(size(x))
-            error('Input dimesions do not match')
+            fclose(fid);
+            error('Input dimesions do not match');
         end
         n_elements = numel(x);
         fprintf(fid, 'DATASET POLYDATA\n');
@@ -235,6 +202,7 @@ switch upper(dataType)
                 else
                     nbLine = 2*(n_elements-1);
                 end
+                n_cells = nbLine;
                 conn1 = zeros(nbLine,1);
                 conn2 = zeros(nbLine,1);
                 conn2(1:nbLine/2) = 1:nbLine/2;
@@ -245,14 +213,77 @@ switch upper(dataType)
                 fprintf(fid,'2 %d %d\n',[conn1';conn2']);
             case 'TRIANGLE'
                 ntri = length(varargin{5});
+                n_cells = ntri;
                 fprintf(fid,'\nPOLYGONS %d %d\n',ntri,4*ntri);
                 fprintf(fid,'3 %d %d %d\n',(varargin{5}-1)');
             case 'TETRAHEDRON'
                 ntetra = length(varargin{5});
+                n_cells = ntetra;
                 fprintf(fid,'\nPOLYGONS %d %d\n',ntetra,5*ntetra);
                 fprintf(fid,'4 %d %d %d %d\n',(varargin{5}-1)');
         end     
 end
+
+if ~strcmpi(dataType,'STRUCTURED_POINTS')
+    % 5.This final part describe the dataset attributes and begins with the
+    % keywords 'POINT_DATA' or 'CELL_DATA', followed by an integer number
+    % specifying the number of points of cells. Other keyword/data combination
+    % then define the actual dataset attribute values.
+    % Parse remaining argument.
+    vidx = find(strcmpi(varargin,'VECTORS'));
+    sidx = find(strcmpi(varargin,'SCALARS'));
+    n_point_cell = [n_elements,n_cells];
+    for pcidx = [1,2]
+        switch pcidx
+            case 1
+                fprintf(fid, ['\nPOINT_DATA ' num2str(n_elements)]);
+            case 2
+                fprintf(fid, ['\nCELL_DATA ' num2str(n_cells)]);
+        end
+        if vidx~=0
+            for ii = 1:length(vidx)
+                title = varargin{vidx(ii)+1};
+                output = [varargin{ vidx(ii) + 2 }(:)';...
+                          varargin{ vidx(ii) + 3 }(:)';...
+                          varargin{ vidx(ii) + 4 }(:)'];
+                % Data entries begin with a keyword specifying data type
+                % and numeric format.
+                if numel(output)==3*n_point_cell(pcidx)
+                    fprintf(fid, ['\nVECTORS ', title,' float\n']);
+                    if ~binaryflag || strcmpi(dataType,'POLYDATA')
+                        spec = [repmat(['%0.', precision, 'f '], 1, 9), '\n'];
+                        fprintf(fid, spec, output);
+                    else
+                        fwrite(fid, output, 'float', 'b');
+                    end
+                elseif pcidx==1 && all(numel(output)~=3*n_point_cell(:))
+                    warning([title,' dimensions do not match']);
+                end
+            end
+        end
+        if sidx~=0
+            for ii = 1:length(sidx)
+                title = varargin{sidx(ii)+1};
+                output = varargin{ sidx(ii) + 2};
+                % Data entries begin with a keyword specifying data type
+                % and numeric format.
+                if numel(varargin{ sidx(ii) + 2})==n_point_cell(pcidx)
+                    fprintf(fid, ['\nSCALARS ', title,' float\n']);
+                    fprintf(fid, 'LOOKUP_TABLE default\n');
+                    if ~binaryflag || strcmpi(dataType,'POLYDATA')
+                        spec = [repmat(['%0.', precision, 'f '], 1, 9), '\n'];
+                        fprintf(fid, spec, output);
+                    else
+                        fwrite(fid, output, 'float', 'b');
+                    end
+                elseif pcidx==1 && all(numel(output)~=n_point_cell(:))
+                    warning(['''',title,''' dimensions do not match']);
+                end
+            end
+        end
+    end
+end
+
 fclose(fid);
 if strcmpi(filename,'matlab_export.vtk')
     switch computer
