@@ -34,6 +34,19 @@ function vtkwrite( filename,dataType,varargin )
 %  title2,r) writes a 3D unstructured grid that contains both vector and scalar values.
 %  x,y,z,u,v,w,r must all be the same size and contain the corresponding
 %  positon, vector and scalar values.
+% 
+%  vtkwrite(filename,'unstructured_grid',x,y,z,'celltype','hex',connectivity) 
+%  writes a 2D or 3D unstructured grid of the given paraview cell 
+%  type. Connectivity array must be of size n_cells x n_cell_vertices. 
+%  Ex: n_cell_vertices = 8 for hex, 4 for tets and quads, 3 for tris.
+%  
+%  vtkwrite(filename,'unstructured_grid',x,y,z,'celltype','hex', ...
+%  connectivity,'vectors',title,u,v,w,'scalars',title2,r) writes a 3D 
+%  unstructured grid of the given paraview cell type, that contains both 
+%  vector and scalar values. x,y,z,u,v,w,r must all be the same size and 
+%  contain the corresponding positon, vector and scalar values. 
+%  Connectivity array must be of size n_cells x n_cell_vertices. 
+%  Ex: n_cell_vertices = 8 for hex, 4 for tets and quads, 3 for tris.
 %  
 %  vtkwrite(filename, 'polydata', 'lines', x, y, z) exports a 3D line where
 %  x,y,z are coordinates of the points that make the line. x, y, z are
@@ -57,7 +70,7 @@ function vtkwrite( filename,dataType,varargin )
 %  filename ''matlab_export.vtk' and automatically loads data into
 %  ParaView. 
 %  
-%  Version 2.3
+%  Version 2.3, Modified by Jeffrey Hadley, Nov 2023
 %  Copyright, Chaoyuan Yeh, 2016
 %  Codes are modified from William Thielicke and David Gingras's submission.    
 
@@ -76,6 +89,9 @@ if any(strcmpi(varargin, 'PRECISION'))
 else
     precision = '2';
 end
+
+% Determining if unstructured cell type inputs have been entered.
+tidx = find(strcmpi(varargin,'CELLTYPE'));
 
 switch upper(dataType)
     case 'STRUCTURED_POINTS'
@@ -145,13 +161,123 @@ switch upper(dataType)
         fprintf(fid, ['POINTS ' num2str(n_elements) ' float\n']);
         output = [x(:)'; y(:)'; z(:)'];
         
-        if ~binaryflag
-            spec = ['%0.', precision, 'f '];
-            fprintf(fid, spec, output);
+        if tidx~=0
+            if ~binaryflag
+                spec = [repmat(['%0.', precision, 'f '], 1, 3), '\n'];
+                fprintf(fid, spec, output);
+            else
+                fwrite(fid, output, 'float', 'b');
+            end
         else
-            fwrite(fid, output, 'float', 'b');
+            if ~binaryflag
+                spec = ['%0.', precision, 'f '];
+                fprintf(fid, spec, output);
+            else
+                fwrite(fid, output, 'float', 'b');
+            end
         end
-        % 5.This final part describe the dataset attributes and begins with the
+
+        % 5. Parse for the type of unstructured cell and write to file if 
+        % given as input. To make use of this, the input arguments must be 
+        % in the following order:
+        % vtkwrite(..., 'celltype','type', connectivity, ...). 
+        % Where connectivity is an array of size n_cells x n_cell_vertices 
+        % (ex: for TET, n_cell_vertices = 4).
+        % 
+        % Note: current implementation only supports meshs/grids composed 
+        % of a single cell type. Supported cell 'type' are: 
+        % 2D - 'TRI', 'QUAD' | 3D - 'TET', 'HEX'.
+
+        if tidx ~=0
+            elem_type = string(varargin(tidx+1));
+            connectivity = cell2mat(varargin(tidx+2));
+            [n_cells, n_cell_vertices] = size(connectivity);
+            
+            switch upper(elem_type)
+                case 'TRI'
+                    paraview_cell_type = 5;
+                    cell_types = ones(n_cells,1) * paraview_cell_type;
+                    if 3 == n_cell_vertices
+                        fprintf(fid,'\nCELLS %d %d\n',n_cells,4*n_cells);
+                        if ~binaryflag
+                        fprintf(fid,'3 %d %d %d\n',(connectivity-1)');
+                        else
+                            output = [ones(n_cells,1)*n_cell_vertices (connectivity-1)];
+                            fwrite(fid, output, 'int32', 'b');
+                        end
+                        fprintf(fid,'\nCELL_TYPES %d\n', n_cells);
+                        if ~binaryflag
+                            fprintf(fid,'%d\n', cell_types);
+                        else
+                            fwrite(fid, cell_types, 'int32', 'b');
+                        end
+                    else
+                        error('Connectivity array size does not match that for TRI element types. Must be n_cells x 3');
+                    end
+                case 'QUAD'
+                    paraview_cell_type = 9;
+                    cell_types = ones(n_cells,1) * paraview_cell_type;
+                    if 4 == n_cell_vertices
+                        fprintf(fid,'\nCELLS %d %d\n',n_cells,5*n_cells);
+                        if ~binaryflag
+                            fprintf(fid,'4 %d %d %d %d\n',(connectivity-1)');
+                        else
+                            output = [ones(n_cells,1)*n_cell_vertices (connectivity-1)];
+                            fwrite(fid, output, 'int32', 'b');
+                        end
+                        fprintf(fid,'\nCELL_TYPES %d\n', n_cells);
+                        if ~binaryflag
+                            fprintf(fid,'%d\n', cell_types);
+                        else
+                            fwrite(fid, cell_types, 'int32', 'b');
+                        end
+                    else
+                        error('Connectivity array size does not match that for QUAD element types. Must be n_cells x 4');
+                    end
+                case 'TET'
+                    paraview_cell_type = 10;
+                    cell_types = ones(n_cells,1) * paraview_cell_type;
+                    if 4 == n_cell_vertices
+                        fprintf(fid,'\nCELLS %d %d\n',n_cells,5*n_cells);
+                        if ~binaryflag
+                            fprintf(fid,'4 %d %d %d %d\n',(connectivity-1)');
+                        else
+                            output = [ones(n_cells,1)*n_cell_vertices (connectivity-1)];
+                            fwrite(fid, output, 'int32', 'b');
+                        end
+                        fprintf(fid,'\nCELL_TYPES %d\n', n_cells);
+                        if ~binaryflag
+                            fprintf(fid,'%d\n', cell_types);
+                        else
+                            fwrite(fid, cell_types, 'int32', 'b');
+                        end
+                    else
+                        error('Connectivity array size does not match that for TET element types. Must be n_cells x 4');
+                    end
+                case 'HEX'
+                    paraview_cell_type = 12;
+                    cell_types = ones(n_cells,1) * paraview_cell_type;
+                    if 8 == n_cell_vertices
+                        fprintf(fid,'\nCELLS %d %d\n',n_cells,9*n_cells);
+                        if ~binaryflag
+                            fprintf(fid,'8 %d %d %d %d %d %d %d %d\n',(connectivity-1)');
+                        else
+                            output = [ones(1,n_cells)*n_cell_vertices; (connectivity-1)'];
+                            fwrite(fid, output, 'int32', 'b');
+                        end
+                        fprintf(fid,'\nCELL_TYPES %d\n', n_cells);
+                        if ~binaryflag
+                            fprintf(fid,'%d\n', cell_types);
+                        else
+                            fwrite(fid, cell_types, 'int32', 'b');
+                        end
+                    else
+                        error('Connectivity array size does not match that for HEX element types. Must be n_cells x 8');
+                    end
+            end
+        end
+
+        % 6.This final part describe the dataset attributes and begins with the
         % keywords 'POINT_DATA' or 'CELL_DATA', followed by an integer number
         % specifying the number of points of cells. Other keyword/data combination
         % then define the actual dataset attribute values.
